@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>💰 Le Mie Finanze</title>
+<meta name="description" content="Gestione finanze personali">
+<meta name="theme-color" content="#0d0f14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Finanze">
+<link rel="manifest" id="pwa-manifest">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// Inietta il manifest PWA inline
+const manifest = {
+  name: "Le Mie Finanze",
+  short_name: "Finanze",
+  description: "Gestione finanze personali",
+  start_url: ".",
+  display: "standalone",
+  background_color: "#0d0f14",
+  theme_color: "#0d0f14",
+  icons: [{
+    src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230d0f14'/><text y='.9em' font-size='80' x='10'>💰</text></svg>",
+    sizes: "any",
+    type: "image/svg+xml"
+  }]
+};
+const blob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
+document.getElementById('pwa-manifest').href = URL.createObjectURL(blob);
+
+// Service Worker per cache offline
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    const swCode = `
+      const CACHE = 'finanze-v1';
+      self.addEventListener('install', e => {
+        e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/'])));
+        self.skipWaiting();
+      });
+      self.addEventListener('fetch', e => {
+        e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
+      });
+    `;
+    const swBlob = new Blob([swCode], {type:'application/javascript'});
+    navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(()=>{});
+  });
+}
+</script>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #161920;
+    --surface2: #1e2230;
+    --border: #2a2f42;
+    --accent: #4f8ef7;
+    --green: #3ecf8e;
+    --red: #f7655a;
+    --amber: #f5a623;
+    --purple: #a78bfa;
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --radius: 14px;
+    --font: 'Sora', sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; overflow-x: hidden; }
+
+  /* NAV */
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(13,15,20,0.95); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; }
+  nav h1 { font-size: 1rem; font-weight: 700; letter-spacing: -.3px; }
+  nav span { font-size: .75rem; color: var(--muted); font-family: var(--mono); }
+
+  /* TABS */
+  .tabs { display: flex; gap: 6px; padding: 12px 16px; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex-shrink: 0; padding: 7px 14px; border-radius: 20px; font-size: .8rem; font-weight: 600; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; transition: all .2s; white-space: nowrap; }
+  .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* PAGES */
+  .page { display: none; padding: 16px; animation: fadeIn .25s ease; }
+  .page.active { display: block; }
+  @keyframes fadeIn { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform: none; } }
+
+  /* CARDS */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+  .card-title { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; }
+
+  /* SALDI */
+  .saldi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .saldo-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; position: relative; overflow: hidden; }
+  .saldo-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .saldo-card.banca-p::before { background: var(--accent); }
+  .saldo-card.banca-f::before { background: var(--green); }
+  .saldo-card.contanti::before { background: var(--amber); }
+  .saldo-card.lavorativi::before { background: var(--purple); }
+  .saldo-label { font-size: .65rem; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin-bottom: 6px; }
+  .saldo-value { font-family: var(--mono); font-size: 1.1rem; font-weight: 600; }
+  .saldo-value.pos { color: var(--green); }
+  .saldo-value.neg { color: var(--red); }
+  .saldo-value.zero { color: var(--muted); }
+
+  /* TOTALE */
+  .totale-card { background: linear-gradient(135deg, #1a2035 0%, #162033 100%); border: 1px solid #2a3a60; border-radius: var(--radius); padding: 18px; margin-bottom: 12px; }
+  .totale-label { font-size: .7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); margin-bottom: 4px; font-weight: 600; }
+  .totale-value { font-family: var(--mono); font-size: 1.8rem; font-weight: 700; color: #fff; }
+
+  /* FORM */
+  .form-group { margin-bottom: 14px; }
+  label { display: block; font-size: .75rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .6px; }
+  input, select, textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 13px 14px; color: var(--text); font-family: var(--font); font-size: .95rem; outline: none; transition: border-color .2s; -webkit-appearance: none; appearance: none; }
+  input:focus, select:focus { border-color: var(--accent); }
+  select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  /* PULSANTI */
+  .btn { width: 100%; padding: 16px; border-radius: 12px; border: none; font-family: var(--font); font-size: 1rem; font-weight: 700; cursor: pointer; transition: all .2s; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:active { transform: scale(.97); background: #3a7de8; }
+  .btn-danger { background: var(--red); color: #fff; font-size: .85rem; padding: 10px; border-radius: 8px; width: auto; }
+  .btn-sm { padding: 8px 14px; font-size: .8rem; width: auto; border-radius: 8px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-family: var(--font); cursor: pointer; }
+
+  /* TIPO BADGE */
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+  .badge-entrata { background: rgba(62,207,142,.15); color: var(--green); }
+  .badge-uscita { background: rgba(247,101,90,.15); color: var(--red); }
+  .badge-giroconto { background: rgba(167,139,250,.15); color: var(--purple); }
+
+  /* LISTA MOVIMENTI */
+  .movimento { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 13px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+  .mov-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
+  .mov-icon.e { background: rgba(62,207,142,.12); }
+  .mov-icon.u { background: rgba(247,101,90,.12); }
+  .mov-icon.g { background: rgba(167,139,250,.12); }
+  .mov-body { flex: 1; min-width: 0; }
+  .mov-descr { font-size: .88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mov-meta { font-size: .72rem; color: var(--muted); margin-top: 2px; }
+  .mov-amount { font-family: var(--mono); font-size: .95rem; font-weight: 600; white-space: nowrap; }
+  .mov-amount.e { color: var(--green); }
+  .mov-amount.u { color: var(--red); }
+  .mov-amount.g { color: var(--purple); }
+  .mov-del { background: none; border: none; color: var(--muted); font-size: 1rem; cursor: pointer; padding: 4px; flex-shrink: 0; }
+
+  /* RATE */
+  .rata-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
+  .rata-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .rata-nome { font-weight: 700; font-size: .95rem; }
+  .rata-istituto { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+  .rata-residuo { font-family: var(--mono); font-size: 1rem; font-weight: 700; color: var(--red); }
+  .progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin: 8px 0; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--green)); border-radius: 3px; transition: width .4s ease; }
+  .rata-row { display: flex; justify-content: space-between; font-size: .78rem; color: var(--muted); }
+
+  /* EMPTY STATE */
+  .empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+  .empty-icon { font-size: 2.5rem; margin-bottom: 10px; }
+  .empty-text { font-size: .9rem; }
+
+  /* TOAST */
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--green); color: #fff; padding: 12px 22px; border-radius: 24px; font-size: .88rem; font-weight: 600; z-index: 999; transition: transform .3s ease; white-space: nowrap; }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* FILTER */
+  .filter-row { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; scrollbar-width: none; }
+  .filter-row::-webkit-scrollbar { display: none; }
+  .filter-btn { flex-shrink: 0; padding: 6px 12px; border-radius: 16px; font-size: .75rem; font-weight: 600; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .filter-btn.active { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+
+  /* SEZIONE TITOLO */
+  .section-title { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+
+  /* GIROCONTO DEST */
+  #dest-group { display: none; }
+</style>
+</head>
+<body>
+
+<nav>
+  <h1>💰 Le Mie Finanze</h1>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span id="nav-date"></span>
+    <button onclick="showPage('backup')" style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;padding:2px">⚙️</button>
+  </div>
+</nav>
+
+<div class="tabs">
+  <div class="tab active" onclick="showPage('dashboard')">📊 Riepilogo</div>
+  <div class="tab" onclick="showPage('inserimento')">➕ Nuovo</div>
+  <div class="tab" onclick="showPage('movimenti')">📋 Movimenti</div>
+  <div class="tab" onclick="showPage('rate')">📅 Rate</div>
+  <div class="tab" onclick="showPage('backup')">⚙️ Backup</div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="page active" id="page-dashboard">
+  <div class="totale-card">
+    <div class="totale-label">Patrimonio Totale</div>
+    <div class="totale-value" id="totale-patrimonio">€ 0,00</div>
+  </div>
+  <div class="saldi-grid">
+    <div class="saldo-card banca-p">
+      <div class="saldo-label">🏦 Banca Pers.</div>
+      <div class="saldo-value" id="saldo-bp">€ 0,00</div>
+    </div>
+    <div class="saldo-card banca-f">
+      <div class="saldo-label">👨‍👩‍👧 Banca Fam.</div>
+      <div class="saldo-value" id="saldo-bf">€ 0,00</div>
+    </div>
+    <div class="saldo-card contanti">
+      <div class="saldo-label">💵 Contanti</div>
+      <div class="saldo-value" id="saldo-ct">€ 0,00</div>
+    </div>
+    <div class="saldo-card lavorativi">
+      <div class="saldo-label">🏢 Lavorativi</div>
+      <div class="saldo-value" id="saldo-lv">€ 0,00</div>
+    </div>
+  </div>
+
+  <div class="section-title">Ultimi movimenti</div>
+  <div id="recent-list"></div>
+
+  <div class="section-title" style="margin-top:16px">Rate in scadenza</div>
+  <div id="rate-preview"></div>
+</div>
+
+<!-- INSERIMENTO -->
+<div class="page" id="page-inserimento">
+  <div class="card">
+    <div class="card-title">Nuovo Movimento</div>
+    <div class="form-group">
+      <label>Data</label>
+      <input type="date" id="f-data">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Conto</label>
+        <select id="f-conto">
+          <option value="">— Scegli —</option>
+          <option value="bp">Banca Personale</option>
+          <option value="bf">Banca Familiare</option>
+          <option value="ct">Contanti</option>
+          <option value="lv">Contanti Lavorativi</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Tipo</label>
+        <select id="f-tipo" onchange="toggleDest()">
+          <option value="">— Scegli —</option>
+          <option value="entrata">Entrata</option>
+          <option value="uscita">Uscita</option>
+          <option value="giroconto">Giroconto</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Importo (€)</label>
+      <input type="number" id="f-importo" placeholder="0.00" step="0.01" min="0" inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label>Categoria</label>
+      <select id="f-categoria">
+        <option value="">— Scegli —</option>
+        <option>Alimentari</option><option>Casa</option><option>Trasporto</option>
+        <option>Salute</option><option>Formazione</option><option>Abbigliamento</option>
+        <option>Telefono/Internet</option><option>Svago</option><option>Lavoro</option>
+        <option>Rate</option><option>Regali/Doni</option><option>Stipendio</option>
+        <option>Rimborso</option><option>Cooperativa</option><option>Prelievo</option>
+        <option>Giroconto</option><option>Varie</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Metodo</label>
+      <select id="f-metodo">
+        <option value="">— Scegli —</option>
+        <option>Bonifico</option><option>Carta</option><option>Contanti</option>
+        <option>Addebito diretto</option><option>Assegno</option><option>PayPal</option><option>Altro</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Descrizione</label>
+      <input type="text" id="f-descr" placeholder="Es. Spesa supermercato...">
+    </div>
+    <div class="form-group" id="dest-group">
+      <label>Conto Destinazione</label>
+      <select id="f-dest">
+        <option value="">— Scegli —</option>
+        <option value="bp">Banca Personale</option>
+        <option value="bf">Banca Familiare</option>
+        <option value="ct">Contanti</option>
+        <option value="lv">Contanti Lavorativi</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Note</label>
+      <input type="text" id="f-note" placeholder="Facoltativo...">
+    </div>
+    <button class="btn btn-primary" onclick="registra()">✅ Registra Movimento</button>
+  </div>
+</div>
+
+<!-- MOVIMENTI -->
+<div class="page" id="page-movimenti">
+  <div class="filter-row" id="filter-row">
+    <div class="filter-btn active" onclick="setFilter('tutti',this)">Tutti</div>
+    <div class="filter-btn" onclick="setFilter('bp',this)">🏦 Banca P.</div>
+    <div class="filter-btn" onclick="setFilter('bf',this)">👨‍👩‍👧 Banca F.</div>
+    <div class="filter-btn" onclick="setFilter('ct',this)">💵 Contanti</div>
+    <div class="filter-btn" onclick="setFilter('lv',this)">🏢 Lavorativi</div>
+  </div>
+  <div id="mov-list"></div>
+</div>
+
+<!-- RATE -->
+<div class="page" id="page-rate">
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">Aggiungi Rateizzazione</div>
+    <div class="form-group">
+      <label>Descrizione</label>
+      <input type="text" id="r-nome" placeholder="Es. Prestito auto...">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Istituto</label>
+        <input type="text" id="r-istituto" placeholder="Es. Findomestic">
+      </div>
+      <div class="form-group">
+        <label>Importo Totale €</label>
+        <input type="number" id="r-totale" placeholder="0.00" step="0.01" inputmode="decimal">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Importo Rata €</label>
+        <input type="number" id="r-rata" placeholder="0.00" step="0.01" inputmode="decimal">
+      </div>
+      <div class="form-group">
+        <label>N° Rate Totali</label>
+        <input type="number" id="r-ntot" placeholder="0" min="1" inputmode="numeric">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Rate Già Pagate</label>
+        <input type="number" id="r-npag" placeholder="0" min="0" inputmode="numeric">
+      </div>
+      <div class="form-group">
+        <label>Prima Rata</label>
+        <input type="date" id="r-data">
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="aggiungiRata()">➕ Aggiungi Rateizzazione</button>
+  </div>
+  <div class="section-title">Rateizzazioni Attive</div>
+  <div id="rate-list"></div>
+</div>
+
+<!-- BACKUP -->
+<div class="page" id="page-backup">
+  <div class="card">
+    <div class="card-title">📧 Salva su Gmail</div>
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;line-height:1.5">Apre Gmail con la mail già pronta. Premi solo <strong style="color:var(--text)">Invia</strong> — i dati arrivano a <strong style="color:var(--accent)">l.gravela@gmail.com</strong> e li ritrovi sempre nella posta.</p>
+    <button class="btn btn-primary" style="background:#d44638" onclick="backupGmail()">📧 Invia Backup su Gmail</button>
+  </div>
+
+  <div class="card" id="pwa-card" style="border-color:#1a3a2a;background:linear-gradient(135deg,#0d1f14,#0d1520)">
+    <div class="card-title" style="color:var(--green)">📱 Installa come App sul Telefono</div>
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;line-height:1.6">
+      Installando l'app, i dati <strong style="color:var(--text)">non vengono cancellati</strong> quando pulisci la cronologia. È come avere una vera app installata.
+    </p>
+    <div id="pwa-install-btn-wrap">
+      <button class="btn" id="pwa-install-btn" style="background:var(--green);color:#fff;display:none" onclick="installaPWA()">
+        📲 Installa App ora
+      </button>
+    </div>
+    <div style="background:var(--surface2);border-radius:10px;padding:14px;margin-top:10px">
+      <div style="font-size:.78rem;font-weight:700;color:var(--green);margin-bottom:8px">Come installare manualmente:</div>
+      <div style="font-size:.78rem;color:var(--muted);line-height:1.9">
+        <div><strong style="color:var(--text)">iPhone (Safari):</strong> tocca 📤 Condividi → "Aggiungi a schermata Home"</div>
+        <div><strong style="color:var(--text)">Android (Chrome):</strong> tocca ⋮ Menu → "Aggiungi a schermata Home" o "Installa app"</div>
+      </div>
+    </div>
+  </div>
+
+
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;line-height:1.5">Salva tutti i tuoi dati in un file <code style="background:var(--surface2);padding:2px 6px;border-radius:4px">.json</code>. Conservalo su Google Drive o mandatelo a te su WhatsApp.</p>
+    <button class="btn btn-primary" onclick="esporta()">📥 Scarica Backup JSON</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📊 Esporta su Excel</div>
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;line-height:1.5">Genera un file <code style="background:var(--surface2);padding:2px 6px;border-radius:4px">.xlsx</code> con tre fogli: Movimenti, Saldi per conto e Rateizzazioni.</p>
+    <button class="btn btn-primary" style="background:var(--green)" onclick="esportaExcel()">📊 Scarica Excel</button>
+  </div>
+  <div class="card">
+    <div class="card-title">📤 Importa Backup</div>
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;line-height:1.5">Ripristina i dati da un backup. <strong style="color:var(--red)">Sovrascrive i dati attuali.</strong></p>
+    <label for="f-import" style="display:block;background:var(--surface2);border:1px dashed var(--border);border-radius:10px;padding:18px;text-align:center;cursor:pointer;color:var(--muted);font-size:.88rem">
+      📂 Tocca per scegliere il file .json
+    </label>
+    <input type="file" id="f-import" accept=".json" style="display:none" onchange="importa(event)">
+  </div>
+  <div class="card" style="border-color:#2a3a1a">
+    <div class="card-title" style="color:var(--green)">💡 Come non perdere i dati</div>
+    <div style="font-size:.83rem;color:var(--muted);line-height:1.8">
+      <div>1. Scarica il backup con il pulsante qui sopra</div>
+      <div>2. Salvalo su <strong style="color:var(--text)">Google Drive</strong> o invialo a te su <strong style="color:var(--text)">WhatsApp</strong></div>
+      <div>3. Per ripristinare, usa "Importa Backup"</div>
+      <div style="margin-top:10px;padding:10px;background:var(--surface2);border-radius:8px">
+        📌 <strong style="color:var(--amber)">Consiglio:</strong> fai un backup una volta a settimana
+      </div>
+    </div>
+  </div>
+  <div class="card" style="border-color:#3a1a1a">
+    <div class="card-title" style="color:var(--red)">🗑 Reset Completo</div>
+    <p style="font-size:.83rem;color:var(--muted);margin-bottom:12px">Cancella tutti i movimenti e le rateizzazioni. Irreversibile.</p>
+    <button onclick="resetDati()" style="background:rgba(247,101,90,.15);border:1px solid var(--red);color:var(--red);padding:10px 18px;border-radius:8px;font-family:var(--font);font-size:.85rem;font-weight:600;cursor:pointer;width:100%">⚠️ Cancella tutto</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'finanze_luigi_v1';
+let state = { movimenti: [], rate: [] };
+let filterConto = 'tutti';
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) state = JSON.parse(raw);
+  } catch(e) {}
+}
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+// ── UTILS ──────────────────────────────────────────────────────────────────
+const CONTI = { bp:'Banca Personale', bf:'Banca Familiare', ct:'Contanti', lv:'Contanti Lavorativi' };
+const EUR = v => '€\u00a0' + parseFloat(v||0).toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});
+const today = () => new Date().toISOString().split('T')[0];
+
+function showToast(msg, color='var(--green)') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = color;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ── TABS ───────────────────────────────────────────────────────────────────
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  const idx = ['dashboard','inserimento','movimenti','rate','backup'].indexOf(id);
+  if (idx >= 0) document.querySelectorAll('.tab')[idx].classList.add('active');
+  if (id === 'dashboard') renderDashboard();
+  if (id === 'movimenti') renderMovimenti();
+  if (id === 'rate') renderRate();
+}
+
+// ── GIROCONTO DEST ─────────────────────────────────────────────────────────
+function toggleDest() {
+  document.getElementById('dest-group').style.display =
+    document.getElementById('f-tipo').value === 'giroconto' ? 'block' : 'none';
+}
+
+// ── REGISTRA ───────────────────────────────────────────────────────────────
+function registra() {
+  const conto   = document.getElementById('f-conto').value;
+  const tipo    = document.getElementById('f-tipo').value;
+  const importo = parseFloat(document.getElementById('f-importo').value);
+  const data    = document.getElementById('f-data').value;
+
+  if (!conto || !tipo || !data || isNaN(importo) || importo <= 0) {
+    showToast('⚠️ Compila almeno: Conto, Tipo, Data, Importo', 'var(--amber)');
+    return;
+  }
+  if (tipo === 'giroconto' && !document.getElementById('f-dest').value) {
+    showToast('⚠️ Specifica il Conto Destinazione', 'var(--amber)');
+    return;
+  }
+
+  const mov = {
+    id: Date.now(),
+    data,
+    conto,
+    tipo,
+    importo,
+    categoria : document.getElementById('f-categoria').value,
+    metodo    : document.getElementById('f-metodo').value,
+    descr     : document.getElementById('f-descr').value || '—',
+    dest      : document.getElementById('f-dest').value,
+    note      : document.getElementById('f-note').value,
+  };
+
+  state.movimenti.unshift(mov);
+  save();
+
+  // reset form
+  ['f-conto','f-tipo','f-categoria','f-metodo','f-dest'].forEach(id => document.getElementById(id).value='');
+  ['f-importo','f-descr','f-note'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('f-data').value = today();
+  document.getElementById('dest-group').style.display = 'none';
+
+  showToast('✅ Movimento registrato!');
+  showPage('dashboard');
+}
+
+// ── SALDI ──────────────────────────────────────────────────────────────────
+function calcolaSaldo(contoId) {
+  return state.movimenti.reduce((acc, m) => {
+    if (m.conto === contoId) {
+      if (m.tipo === 'entrata') acc += m.importo;
+      if (m.tipo === 'uscita')  acc -= m.importo;
+      if (m.tipo === 'giroconto') acc -= m.importo;
+    }
+    if (m.tipo === 'giroconto' && m.dest === contoId) acc += m.importo;
+    return acc;
+  }, 0);
+}
+
+// ── RENDER DASHBOARD ──────────────────────────────────────────────────────
+function renderDashboard() {
+  const saldi = { bp: calcolaSaldo('bp'), bf: calcolaSaldo('bf'), ct: calcolaSaldo('ct'), lv: calcolaSaldo('lv') };
+  const totale = Object.values(saldi).reduce((a,b)=>a+b,0);
+
+  document.getElementById('totale-patrimonio').textContent = EUR(totale);
+  ['bp','bf','ct','lv'].forEach(k => {
+    const el = document.getElementById('saldo-' + k);
+    el.textContent = EUR(saldi[k]);
+    el.className = 'saldo-value ' + (saldi[k] > 0 ? 'pos' : saldi[k] < 0 ? 'neg' : 'zero');
+  });
+
+  // ultimi 5 movimenti
+  const rl = document.getElementById('recent-list');
+  const ultimi = state.movimenti.slice(0,5);
+  if (!ultimi.length) {
+    rl.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nessun movimento ancora</div></div>';
+  } else {
+    rl.innerHTML = ultimi.map(m => movHtml(m)).join('');
+  }
+
+  // rate preview
+  const rp = document.getElementById('rate-preview');
+  if (!state.rate.length) {
+    rp.innerHTML = '<div class="empty"><div class="empty-icon">✅</div><div class="empty-text">Nessuna rateizzazione</div></div>';
+  } else {
+    rp.innerHTML = state.rate.slice(0,3).map(r => {
+      const residuo = r.totale - (r.rata * r.npag);
+      const perc = r.ntot > 0 ? Math.round((r.npag / r.ntot) * 100) : 0;
+      return `<div class="card" style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:600;font-size:.88rem">${r.nome}</div>
+          <div style="font-family:var(--mono);color:var(--red);font-size:.9rem">${EUR(Math.max(0,residuo))}</div>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${perc}%"></div></div>
+        <div style="font-size:.72rem;color:var(--muted)">${r.npag}/${r.ntot} rate · ${perc}% completato</div>
+      </div>`;
+    }).join('');
+  }
+}
+
+// ── MOV HTML ──────────────────────────────────────────────────────────────
+const TIPO_ICON = { entrata: '↑', uscita: '↓', giroconto: '⇄' };
+const TIPO_CLASS = { entrata: 'e', uscita: 'u', giroconto: 'g' };
+
+function movHtml(m, showDel=false) {
+  const tc = TIPO_CLASS[m.tipo] || 'u';
+  const sign = m.tipo === 'entrata' ? '+' : '-';
+  const contoLabel = CONTI[m.conto] || m.conto;
+  return `<div class="movimento">
+    <div class="mov-icon ${tc}">${TIPO_ICON[m.tipo]||'?'}</div>
+    <div class="mov-body">
+      <div class="mov-descr">${m.descr}</div>
+      <div class="mov-meta">${m.data} · ${contoLabel}${m.tipo==='giroconto'&&m.dest?' → '+CONTI[m.dest]:''} · ${m.categoria||'—'}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <div class="mov-amount ${tc}">${sign}${EUR(m.importo)}</div>
+      ${showDel ? `<button class="mov-del" onclick="eliminaMov(${m.id})">🗑</button>` : ''}
+    </div>
+  </div>`;
+}
+
+// ── RENDER MOVIMENTI ──────────────────────────────────────────────────────
+function setFilter(conto, el) {
+  filterConto = conto;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  renderMovimenti();
+}
+
+function renderMovimenti() {
+  const list = document.getElementById('mov-list');
+  const filtered = filterConto === 'tutti'
+    ? state.movimenti
+    : state.movimenti.filter(m => m.conto === filterConto || m.dest === filterConto);
+  if (!filtered.length) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nessun movimento</div></div>';
+  } else {
+    list.innerHTML = filtered.map(m => movHtml(m, true)).join('');
+  }
+}
+
+function eliminaMov(id) {
+  if (!confirm('Eliminare questo movimento?')) return;
+  state.movimenti = state.movimenti.filter(m => m.id !== id);
+  save();
+  renderMovimenti();
+  showToast('🗑 Movimento eliminato', 'var(--red)');
+}
+
+// ── RENDER RATE ────────────────────────────────────────────────────────────
+function aggiungiRata() {
+  const nome = document.getElementById('r-nome').value.trim();
+  const totale = parseFloat(document.getElementById('r-totale').value);
+  const rata = parseFloat(document.getElementById('r-rata').value);
+  const ntot = parseInt(document.getElementById('r-ntot').value);
+  const npag = parseInt(document.getElementById('r-npag').value)||0;
+  if (!nome || isNaN(totale) || isNaN(rata) || isNaN(ntot)) {
+    showToast('⚠️ Compila almeno: nome, totale, rata, n° rate', 'var(--amber)');
+    return;
+  }
+  state.rate.push({
+    id: Date.now(),
+    nome, totale, rata, ntot, npag,
+    istituto: document.getElementById('r-istituto').value,
+    data: document.getElementById('r-data').value,
+  });
+  save();
+  ['r-nome','r-istituto','r-totale','r-rata','r-ntot','r-npag','r-data'].forEach(id=>document.getElementById(id).value='');
+  showToast('✅ Rateizzazione aggiunta!');
+  renderRate();
+}
+
+function eliminaRata(id) {
+  if (!confirm('Eliminare questa rateizzazione?')) return;
+  state.rate = state.rate.filter(r => r.id !== id);
+  save();
+  renderRate();
+  showToast('🗑 Rateizzazione eliminata', 'var(--red)');
+}
+
+function aggiornaRata(id, delta) {
+  const r = state.rate.find(r=>r.id===id);
+  if (!r) return;
+  r.npag = Math.max(0, Math.min(r.ntot, r.npag + delta));
+  save();
+  renderRate();
+}
+
+function renderRate() {
+  const list = document.getElementById('rate-list');
+  if (!state.rate.length) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">✅</div><div class="empty-text">Nessuna rateizzazione</div></div>';
+    return;
+  }
+  list.innerHTML = state.rate.map(r => {
+    const residuo = Math.max(0, r.totale - (r.rata * r.npag));
+    const perc = r.ntot > 0 ? Math.min(100, Math.round((r.npag / r.ntot)*100)) : 0;
+    return `<div class="rata-card">
+      <div class="rata-header">
+        <div>
+          <div class="rata-nome">${r.nome}</div>
+          <div class="rata-istituto">${r.istituto||'—'} · dal ${r.data||'—'}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="rata-residuo">${EUR(residuo)}</div>
+          <div style="font-size:.7rem;color:var(--muted)">residuo</div>
+        </div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${perc}%"></div></div>
+      <div class="rata-row">
+        <span>${r.npag} / ${r.ntot} rate pagate</span>
+        <span>${perc}% completato</span>
+      </div>
+      <div class="rata-row" style="margin-top:4px">
+        <span>Rata: ${EUR(r.rata)} · Totale: ${EUR(r.totale)}</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+        <button class="btn-sm" onclick="aggiornaRata(${r.id},-1)">− Rata</button>
+        <button class="btn-sm" onclick="aggiornaRata(${r.id},1)" style="background:rgba(62,207,142,.15);border-color:var(--green);color:var(--green)">+ Rata pagata</button>
+        <button class="mov-del" onclick="eliminaRata(${r.id})" style="margin-left:auto">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function esportaExcel() {
+  const wb = XLSX.utils.book_new();
+  const CONTI_LABEL = { bp:'Banca Personale', bf:'Banca Familiare', ct:'Contanti', lv:'Contanti Lavorativi' };
+
+  // ── Foglio 1: Movimenti ──
+  const movRows = [['Data','Conto','Tipo','Importo (€)','Categoria','Metodo','Descrizione','Conto Dest.','Note']];
+  state.movimenti.forEach(m => movRows.push([
+    m.data,
+    CONTI_LABEL[m.conto] || m.conto,
+    m.tipo.charAt(0).toUpperCase() + m.tipo.slice(1),
+    parseFloat(m.importo),
+    m.categoria || '',
+    m.metodo || '',
+    m.descr || '',
+    m.dest ? (CONTI_LABEL[m.dest] || m.dest) : '',
+    m.note || ''
+  ]));
+  const ws1 = XLSX.utils.aoa_to_sheet(movRows);
+  ws1['!cols'] = [10,18,12,13,15,14,24,18,18].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws1, 'Movimenti');
+
+  // ── Foglio 2: Saldi per conto ──
+  const saldi = Object.entries(CONTI_LABEL).map(([k, label]) => {
+    const entrate  = state.movimenti.filter(m=>m.conto===k&&m.tipo==='entrata').reduce((s,m)=>s+m.importo,0);
+    const uscite   = state.movimenti.filter(m=>m.conto===k&&m.tipo==='uscita').reduce((s,m)=>s+m.importo,0);
+    const giro_out = state.movimenti.filter(m=>m.conto===k&&m.tipo==='giroconto').reduce((s,m)=>s+m.importo,0);
+    const giro_in  = state.movimenti.filter(m=>m.dest===k&&m.tipo==='giroconto').reduce((s,m)=>s+m.importo,0);
+    const saldo    = entrate - uscite - giro_out + giro_in;
+    return [label, entrate, uscite, giro_out - giro_in, saldo];
+  });
+  const saldiRows = [['Conto','Entrate (€)','Uscite (€)','Giroconti netti (€)','Saldo (€)'], ...saldi];
+  const totRow = ['TOTALE',
+    saldi.reduce((s,r)=>s+r[1],0),
+    saldi.reduce((s,r)=>s+r[2],0),
+    saldi.reduce((s,r)=>s+r[3],0),
+    saldi.reduce((s,r)=>s+r[4],0)
+  ];
+  saldiRows.push(totRow);
+  const ws2 = XLSX.utils.aoa_to_sheet(saldiRows);
+  ws2['!cols'] = [22,14,14,20,14].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws2, 'Saldi');
+
+  // ── Foglio 3: Rateizzazioni ──
+  const rateRows = [['Descrizione','Istituto','Importo Totale (€)','Importo Rata (€)','Rate Totali','Rate Pagate','Residuo (€)','% Completamento','Prima Rata']];
+  state.rate.forEach(r => {
+    const residuo = Math.max(0, r.totale - r.rata * r.npag);
+    const perc = r.ntot > 0 ? Math.round((r.npag / r.ntot) * 100) / 100 : 0;
+    rateRows.push([r.nome, r.istituto||'', r.totale, r.rata, r.ntot, r.npag, residuo, perc, r.data||'']);
+  });
+  const ws3 = XLSX.utils.aoa_to_sheet(rateRows);
+  ws3['!cols'] = [24,18,16,14,13,13,14,16,12].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws3, 'Rateizzazioni');
+
+  const data = new Date().toISOString().split('T')[0];
+  XLSX.writeFile(wb, `finanze_${data}.xlsx`);
+  showToast('📊 Excel scaricato!');
+}
+
+function backupGmail() {
+  const data = new Date().toISOString().split('T')[0];
+  const json = JSON.stringify(state, null, 2);
+  const nMov = state.movimenti.length;
+  const nRate = state.rate.length;
+
+  const subject = encodeURIComponent(`💰 Backup Finanze ${data}`);
+  const body = encodeURIComponent(
+    `Backup automatico delle mie finanze del ${data}\n\n` +
+    `Movimenti: ${nMov}\n` +
+    `Rateizzazioni: ${nRate}\n\n` +
+    `--- COPIA IL TESTO QUI SOTTO PER IMPORTARE ---\n\n` +
+    json +
+    `\n\n--- FINE BACKUP ---\n\n` +
+    `Per ripristinare: copia il JSON, salvalo come file .json, poi importalo nell'app.`
+  );
+
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&to=l.gravela%40gmail.com&su=${subject}&body=${body}`;
+  window.open(gmailUrl, '_blank');
+  showToast('📧 Gmail aperto — premi Invia!');
+}
+
+// ── BACKUP ─────────────────────────────────────────────────────────────────
+function esporta() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const data = new Date().toISOString().split('T')[0];
+  a.href = url;
+  a.download = `finanze_backup_${data}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('📥 Backup scaricato!');
+}
+
+function importa(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      if (!parsed.movimenti || !parsed.rate) throw new Error('Formato non valido');
+      if (!confirm(`Importare ${parsed.movimenti.length} movimenti e ${parsed.rate.length} rateizzazioni? I dati attuali verranno sostituiti.`)) return;
+      state = parsed;
+      save();
+      showToast('✅ Dati importati con successo!');
+      renderDashboard();
+    } catch(err) {
+      showToast('❌ File non valido', 'var(--red)');
+    }
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function resetDati() {
+  if (!confirm('Sei sicuro? Tutti i movimenti e le rateizzazioni verranno cancellati definitivamente.')) return;
+  state = { movimenti: [], rate: [] };
+  save();
+  showToast('🗑 Dati cancellati', 'var(--red)');
+  showPage('dashboard');
+}
+
+// ── PWA INSTALL ────────────────────────────────────────────────────────────
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.getElementById('pwa-install-btn');
+  if (btn) btn.style.display = 'block';
+});
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  showToast('✅ App installata! I dati sono al sicuro.', 'var(--green)');
+  const btn = document.getElementById('pwa-install-btn');
+  if (btn) btn.closest('.card').innerHTML += '<div style="color:var(--green);font-size:.85rem;margin-top:8px;font-weight:600">✅ App già installata</div>';
+});
+function installaPWA() {
+  if (!deferredPrompt) {
+    showToast('Usa il menu del browser per installare', 'var(--amber)');
+    return;
+  }
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(r => {
+    if (r.outcome === 'accepted') showToast('✅ Installazione completata!');
+    deferredPrompt = null;
+  });
+}
+
+// ── INIT ───────────────────────────────────────────────────────────────────
+load();
+document.getElementById('f-data').value = today();
+document.getElementById('nav-date').textContent = new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});
+renderDashboard();
+</script>
+</body>
+</html>
