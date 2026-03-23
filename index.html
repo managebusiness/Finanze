@@ -175,9 +175,54 @@ if ('serviceWorker' in navigator) {
 
   /* GIROCONTO DEST */
   #dest-group { display: none; }
+
+  /* PIN LOCK */
+  #pin-screen { position: fixed; inset: 0; background: var(--bg); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+  #pin-screen.hidden { display: none; }
+  .pin-logo { font-size: 3rem; margin-bottom: 8px; }
+  .pin-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
+  .pin-subtitle { font-size: .8rem; color: var(--muted); margin-bottom: 36px; }
+  .pin-dots { display: flex; gap: 14px; margin-bottom: 36px; }
+  .pin-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border); background: transparent; transition: all .15s; }
+  .pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+  .pin-dot.error { background: var(--red); border-color: var(--red); }
+  .pin-keypad { display: grid; grid-template-columns: repeat(3, 72px); gap: 12px; }
+  .pin-key { width: 72px; height: 72px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-family: var(--font); font-size: 1.4rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .1s; user-select: none; }
+  .pin-key:active { transform: scale(.92); background: var(--surface2); }
+  .pin-key.empty { background: transparent; border-color: transparent; cursor: default; }
+  .pin-key.del { font-size: 1.1rem; color: var(--muted); }
+  .pin-error-msg { color: var(--red); font-size: .82rem; margin-top: 16px; min-height: 20px; font-weight: 600; }
 </style>
 </head>
 <body>
+
+<!-- PIN LOCK SCREEN -->
+<div id="pin-screen">
+  <div class="pin-logo">💰</div>
+  <div class="pin-title" id="pin-title">Le Mie Finanze</div>
+  <div class="pin-subtitle" id="pin-subtitle">Inserisci il PIN</div>
+  <div class="pin-dots">
+    <div class="pin-dot" id="dot-0"></div>
+    <div class="pin-dot" id="dot-1"></div>
+    <div class="pin-dot" id="dot-2"></div>
+    <div class="pin-dot" id="dot-3"></div>
+  </div>
+  <div class="pin-keypad">
+    <div class="pin-key" onclick="pinKey('1')">1</div>
+    <div class="pin-key" onclick="pinKey('2')">2</div>
+    <div class="pin-key" onclick="pinKey('3')">3</div>
+    <div class="pin-key" onclick="pinKey('4')">4</div>
+    <div class="pin-key" onclick="pinKey('5')">5</div>
+    <div class="pin-key" onclick="pinKey('6')">6</div>
+    <div class="pin-key" onclick="pinKey('7')">7</div>
+    <div class="pin-key" onclick="pinKey('8')">8</div>
+    <div class="pin-key" onclick="pinKey('9')">9</div>
+    <div class="pin-key empty"></div>
+    <div class="pin-key" onclick="pinKey('0')">0</div>
+    <div class="pin-key del" onclick="pinDel()">⌫</div>
+  </div>
+  <div class="pin-error-msg" id="pin-error"></div>
+</div>
 
 <nav>
   <h1>💰 Le Mie Finanze</h1>
@@ -203,19 +248,19 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="saldi-grid">
     <div class="saldo-card banca-p">
-      <div class="saldo-label">🏦 Banca Pers.</div>
+      <div class="saldo-label">🏦 Conto 1048</div>
       <div class="saldo-value" id="saldo-bp">€ 0,00</div>
     </div>
     <div class="saldo-card banca-f">
-      <div class="saldo-label">👨‍👩‍👧 Banca Fam.</div>
+      <div class="saldo-label">💳 Carta 051</div>
       <div class="saldo-value" id="saldo-bf">€ 0,00</div>
     </div>
     <div class="saldo-card contanti">
-      <div class="saldo-label">💵 Contanti</div>
+      <div class="saldo-label">💵 Cassa Irsina</div>
       <div class="saldo-value" id="saldo-ct">€ 0,00</div>
     </div>
     <div class="saldo-card lavorativi">
-      <div class="saldo-label">🏢 Lavorativi</div>
+      <div class="saldo-label">🏢 Cont. Irsina</div>
       <div class="saldo-value" id="saldo-lv">€ 0,00</div>
     </div>
   </div>
@@ -240,10 +285,10 @@ if ('serviceWorker' in navigator) {
         <label>Conto</label>
         <select id="f-conto">
           <option value="">— Scegli —</option>
-          <option value="bp">Banca Personale</option>
-          <option value="bf">Banca Familiare</option>
-          <option value="ct">Contanti</option>
-          <option value="lv">Contanti Lavorativi</option>
+          <option value="bp">Conto 1048</option>
+          <option value="bf">Carta 051</option>
+          <option value="ct">Cassa Irsina</option>
+          <option value="lv">Contanti Irsina</option>
         </select>
       </div>
       <div class="form-group">
@@ -288,10 +333,10 @@ if ('serviceWorker' in navigator) {
       <label>Conto Destinazione</label>
       <select id="f-dest">
         <option value="">— Scegli —</option>
-        <option value="bp">Banca Personale</option>
-        <option value="bf">Banca Familiare</option>
-        <option value="ct">Contanti</option>
-        <option value="lv">Contanti Lavorativi</option>
+        <option value="bp">Conto 1048</option>
+        <option value="bf">Carta 051</option>
+        <option value="ct">Cassa Irsina</option>
+        <option value="lv">Contanti Irsina</option>
       </select>
     </div>
     <div class="form-group">
@@ -306,10 +351,10 @@ if ('serviceWorker' in navigator) {
 <div class="page" id="page-movimenti">
   <div class="filter-row" id="filter-row">
     <div class="filter-btn active" onclick="setFilter('tutti',this)">Tutti</div>
-    <div class="filter-btn" onclick="setFilter('bp',this)">🏦 Banca P.</div>
-    <div class="filter-btn" onclick="setFilter('bf',this)">👨‍👩‍👧 Banca F.</div>
-    <div class="filter-btn" onclick="setFilter('ct',this)">💵 Contanti</div>
-    <div class="filter-btn" onclick="setFilter('lv',this)">🏢 Lavorativi</div>
+    <div class="filter-btn" onclick="setFilter('bp',this)">🏦 Conto 1048</div>
+    <div class="filter-btn" onclick="setFilter('bf',this)">💳 Carta 051</div>
+    <div class="filter-btn" onclick="setFilter('ct',this)">💵 Cassa Irsina</div>
+    <div class="filter-btn" onclick="setFilter('lv',this)">🏢 Cont. Irsina</div>
   </div>
   <div id="mov-list"></div>
 </div>
@@ -362,7 +407,7 @@ if ('serviceWorker' in navigator) {
 <div class="page" id="page-backup">
   <div class="card">
     <div class="card-title">📧 Salva su Gmail</div>
-    <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;line-height:1.5">Apre Gmail con la mail già pronta. Premi solo <strong style="color:var(--text)">Invia</strong> — i dati arrivano a <strong style="color:var(--accent)">l.gravela@gmail.com</strong> e li ritrovi sempre nella posta.</p>
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;line-height:1.5">Apre Gmail con la mail già pronta. Premi solo <strong style="color:var(--text)">Invia</strong> — i dati arrivano a <strong style="color:var(--accent)"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="88e4a6effae9feede4e9c8efe5e9e1e4a6ebe7e5">[email&#160;protected]</a></strong> e li ritrovi sempre nella posta.</p>
     <button class="btn btn-primary" style="background:#d44638" onclick="backupGmail()">📧 Invia Backup su Gmail</button>
   </div>
 
@@ -403,7 +448,13 @@ if ('serviceWorker' in navigator) {
     </label>
     <input type="file" id="f-import" accept=".json" style="display:none" onchange="importa(event)">
   </div>
-  <div class="card" style="border-color:#2a3a1a">
+  <div class="card" style="border-color:#1a2a3a">
+    <div class="card-title" style="color:var(--accent)">🔐 PIN di Accesso</div>
+    <div id="pin-status-text" style="font-size:.85rem;color:var(--muted);margin-bottom:14px;line-height:1.5"></div>
+    <button class="btn btn-primary" style="background:var(--accent)" onclick="mostraImpostaPIN()">🔐 Imposta / Cambia PIN</button>
+  </div>
+
+
     <div class="card-title" style="color:var(--green)">💡 Come non perdere i dati</div>
     <div style="font-size:.83rem;color:var(--muted);line-height:1.8">
       <div>1. Scarica il backup con il pulsante qui sopra</div>
@@ -423,7 +474,7 @@ if ('serviceWorker' in navigator) {
 
 <div class="toast" id="toast"></div>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 // ── STATE ──────────────────────────────────────────────────────────────────
 const STORAGE_KEY = 'finanze_luigi_v1';
 let state = { movimenti: [], rate: [] };
@@ -440,7 +491,7 @@ function save() {
 }
 
 // ── UTILS ──────────────────────────────────────────────────────────────────
-const CONTI = { bp:'Banca Personale', bf:'Banca Familiare', ct:'Contanti', lv:'Contanti Lavorativi' };
+const CONTI = { bp:'Conto 1048', bf:'Carta 051', ct:'Cassa Irsina', lv:'Contanti Irsina' };
 const EUR = v => '€\u00a0' + parseFloat(v||0).toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});
 const today = () => new Date().toISOString().split('T')[0];
 
@@ -693,7 +744,7 @@ function renderRate() {
 
 function esportaExcel() {
   const wb = XLSX.utils.book_new();
-  const CONTI_LABEL = { bp:'Banca Personale', bf:'Banca Familiare', ct:'Contanti', lv:'Contanti Lavorativi' };
+  const CONTI_LABEL = { bp:'Conto 1048', bf:'Carta 051', ct:'Cassa Irsina', lv:'Contanti Irsina' };
 
   // ── Foglio 1: Movimenti ──
   const movRows = [['Data','Conto','Tipo','Importo (€)','Categoria','Metodo','Descrizione','Conto Dest.','Note']];
@@ -813,6 +864,104 @@ function resetDati() {
   showPage('dashboard');
 }
 
+// ── PIN ────────────────────────────────────────────────────────────────────
+const PIN_KEY = 'finanze_pin';
+let pinBuffer = '';
+let pinMode = 'unlock'; // 'unlock' | 'set1' | 'set2'
+let pinTemp = '';
+
+function getPIN() { return localStorage.getItem(PIN_KEY) || ''; }
+
+function initPIN() {
+  const pin = getPIN();
+  const screen = document.getElementById('pin-screen');
+  const statusEl = document.getElementById('pin-status-text');
+  if (statusEl) statusEl.textContent = pin ? '✅ PIN attivo — puoi cambiarlo in qualsiasi momento.' : '⚠️ Nessun PIN impostato — l\'app è accessibile a chiunque.';
+  if (!pin) { screen.classList.add('hidden'); return; }
+  pinMode = 'unlock';
+  document.getElementById('pin-title').textContent = 'Le Mie Finanze';
+  document.getElementById('pin-subtitle').textContent = 'Inserisci il PIN per accedere';
+  screen.classList.remove('hidden');
+}
+
+function pinKey(digit) {
+  if (pinBuffer.length >= 4) return;
+  pinBuffer += digit;
+  updateDots();
+  if (pinBuffer.length === 4) setTimeout(checkPIN, 120);
+}
+
+function pinDel() {
+  pinBuffer = pinBuffer.slice(0, -1);
+  updateDots();
+  document.getElementById('pin-error').textContent = '';
+}
+
+function updateDots(errorClass = false) {
+  for (let i = 0; i < 4; i++) {
+    const dot = document.getElementById('dot-' + i);
+    dot.classList.remove('filled', 'error');
+    if (errorClass) dot.classList.add('error');
+    else if (i < pinBuffer.length) dot.classList.add('filled');
+  }
+}
+
+function checkPIN() {
+  if (pinMode === 'unlock') {
+    if (pinBuffer === getPIN()) {
+      document.getElementById('pin-screen').classList.add('hidden');
+      document.getElementById('pin-error').textContent = '';
+    } else {
+      updateDots(true);
+      document.getElementById('pin-error').textContent = 'PIN errato, riprova';
+      setTimeout(() => { pinBuffer = ''; updateDots(); }, 700);
+    }
+  } else if (pinMode === 'set1') {
+    pinTemp = pinBuffer;
+    pinBuffer = '';
+    updateDots();
+    document.getElementById('pin-subtitle').textContent = 'Conferma il nuovo PIN';
+    pinMode = 'set2';
+  } else if (pinMode === 'set2') {
+    if (pinBuffer === pinTemp) {
+      localStorage.setItem(PIN_KEY, pinBuffer);
+      document.getElementById('pin-screen').classList.add('hidden');
+      document.getElementById('pin-error').textContent = '';
+      const statusEl = document.getElementById('pin-status-text');
+      if (statusEl) statusEl.textContent = '✅ PIN attivo — puoi cambiarlo in qualsiasi momento.';
+      showToast('🔐 PIN impostato con successo!');
+    } else {
+      updateDots(true);
+      document.getElementById('pin-error').textContent = 'I PIN non coincidono, ricomincia';
+      setTimeout(() => { pinBuffer = ''; pinMode = 'set1'; updateDots(); document.getElementById('pin-subtitle').textContent = 'Scegli un nuovo PIN a 4 cifre'; }, 800);
+    }
+  }
+  pinBuffer = '';
+}
+
+function mostraImpostaPIN() {
+  pinBuffer = ''; pinTemp = ''; pinMode = 'set1';
+  updateDots();
+  document.getElementById('pin-title').textContent = 'Imposta PIN';
+  document.getElementById('pin-subtitle').textContent = 'Scegli un nuovo PIN a 4 cifre';
+  document.getElementById('pin-error').textContent = '';
+  document.getElementById('pin-screen').classList.remove('hidden');
+}
+
+// blocco automatico quando si nasconde la pagina
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  const pin = getPIN();
+  if (pin) {
+    pinBuffer = ''; pinMode = 'unlock';
+    updateDots();
+    document.getElementById('pin-title').textContent = 'Le Mie Finanze';
+    document.getElementById('pin-subtitle').textContent = 'Inserisci il PIN per accedere';
+    document.getElementById('pin-error').textContent = '';
+    document.getElementById('pin-screen').classList.remove('hidden');
+  }
+});
+
 // ── PWA INSTALL ────────────────────────────────────────────────────────────
 let deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', e => {
@@ -843,6 +992,7 @@ function installaPWA() {
 load();
 document.getElementById('f-data').value = today();
 document.getElementById('nav-date').textContent = new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});
+initPIN();
 renderDashboard();
 </script>
 </body>
